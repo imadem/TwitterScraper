@@ -7,6 +7,8 @@ from abc import abstractmethod
 from urlparse import urlunparse
 from bs4 import BeautifulSoup
 from time import sleep
+import codecs
+import sys
 
 __author__ = 'Tom Dickinson'
 
@@ -23,16 +25,21 @@ class TwitterSearch:
         self.rate_delay = rate_delay
         self.error_delay = error_delay
 
-    def search(self, query):
+    def search(self, query, max_position=None):
         """
         Scrape items from twitter
         :param query:   Query to search Twitter with. Takes form of queries constructed with using Twitters
                         advanced search: https://twitter.com/search-advanced
         """
-        url = self.construct_url(query)
+        url = self.construct_url(query, max_position)
         continue_search = True
         min_tweet = None
         response = self.execute_search(url)
+
+        write_f = codecs.open('tweets.csv', 'wb+')
+        urls_f = codecs.open('urls.txt', 'wb+')
+        write_f.write('user id, name, user name, date, retweets, favorites, text, location, id, permalink, language')
+
         while response is not None and continue_search and response['items_html'] is not None:
             tweets = self.parse_tweets(response['items_html'])
 
@@ -44,16 +51,20 @@ class TwitterSearch:
             if min_tweet is None:
                 min_tweet = tweets[0]
 
-            continue_search = self.save_tweets(tweets)
+            continue_search = self.save_tweets(tweets, write_f)
 
             # Our max tweet is the last tweet in the list
             max_tweet = tweets[-1]
             if min_tweet['tweet_id'] is not max_tweet['tweet_id']:
                 max_position = "TWEET-%s-%s" % (max_tweet['tweet_id'], min_tweet['tweet_id'])
                 url = self.construct_url(query, max_position=max_position)
+                self.save_max_position(url, urls_f)
                 # Sleep for our rate_delay
                 sleep(self.rate_delay)
                 response = self.execute_search(url)
+
+        write_f.close()
+        urls_f.close()
 
     def execute_search(self, url):
         """
@@ -67,17 +78,36 @@ class TwitterSearch:
                 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.86 Safari/537.36'
             }
             req = urllib2.Request(url, headers=headers)
+            print "Response received"
             response = urllib2.urlopen(req)
             data = json.loads(response.read())
+            print "Data loaded"
             return data
 
         # If we get a ValueError exception due to a request timing out, we sleep for our error delay, then make
         # another attempt
         except ValueError as e:
             print e.message
-            print "Sleeping for %i" % self.error_delay
-            sleep(self.error_delay)
-            return self.execute_search(url)
+            self.handle_error(url)
+
+        #Handle other errors similarly
+        except urllib2.HTTPError, e:
+            print 'HTTPError: ' + str(e.code)
+            self.handle_error(url)
+
+        except urllib2.URLError, e:
+            print 'URLError: ' + str(e.reason)
+            self.handle_error(url)
+
+        except Exception:
+            import traceback
+            print 'Generic Exception: ' + traceback.format_exc()
+            self.handle_error(url)   
+
+    def handle_error(self, url):
+        print "Sleeping for %i seconds" % self.error_delay
+        sleep(self.error_delay)
+        return self.execute_search(url)
 
     @staticmethod
     def parse_tweets(items_html):
@@ -86,7 +116,7 @@ class TwitterSearch:
         :param items_html: The HTML block with tweets
         :return: A JSON list of tweets
         """
-        soup = BeautifulSoup(items_html, "html")
+        soup = BeautifulSoup(items_html, "lxml")
         tweets = []
         for li in soup.find_all("li", class_='js-stream-item'):
 
@@ -96,13 +126,16 @@ class TwitterSearch:
 
             tweet = {
                 'tweet_id': li['data-item-id'],
-                'text': None,
+                'text': "",
                 'user_id': None,
-                'user_screen_name': None,
-                'user_name': None,
+                'user_screen_name': "",
+                'user_name': "",
                 'created_at': None,
                 'retweets': 0,
-                'favorites': 0
+                'favorites': 0,
+                'location': None,
+                'language': None,
+                'permalink': None
             }
 
             # Tweet Text
@@ -110,12 +143,13 @@ class TwitterSearch:
             if text_p is not None:
                 tweet['text'] = text_p.get_text().encode('utf-8')
 
-            # Tweet User ID, User Screen Name, User Name
+            # Tweet User ID, User Screen Name, User Name, Permalink
             user_details_div = li.find("div", class_="tweet")
             if user_details_div is not None:
                 tweet['user_id'] = user_details_div['data-user-id']
-                tweet['user_screen_name'] = user_details_div['data-user-id']
+                tweet['user_screen_name'] = user_details_div['data-screen-name']
                 tweet['user_name'] = user_details_div['data-name']
+                tweet['permalink'] = 'https://twitter.com' + user_details_div['data-permalink-path']
 
             # Tweet date
             date_span = li.find("span", class_="_timestamp")
@@ -131,6 +165,16 @@ class TwitterSearch:
             favorite_span = li.select("span.ProfileTweet-action--favorite > span.ProfileTweet-actionCount")
             if favorite_span is not None and len(retweet_span) > 0:
                 tweet['favorites'] = int(favorite_span[0]['data-tweet-stat-count'])
+
+            #Location
+            location_span = li.find("span", class_='Tweet-geo')
+            if location_span is not None:
+                tweet['location'] = location_span['title']
+
+            #Language
+            lang_p = li.find("p", class_='tweet-text')
+            if lang_p is not None:
+                tweet['language'] = lang_p['lang']
 
             tweets.append(tweet)
         return tweets
@@ -159,10 +203,15 @@ class TwitterSearch:
         return urlunparse(url_tupple)
 
     @abstractmethod
-    def save_tweets(self, tweets):
+    def save_tweets(self, tweets, write_f):
         """
         An abstract method that's called with a list of tweets.
         When implementing this class, you can do whatever you want with these tweets.
+        """
+    @abstractmethod
+    def save_max_position(self, max_position, write_f):
+        """
+        An abstract method to log search URLs with max_position, in order to resume search. 
         """
 
 
@@ -178,11 +227,14 @@ class TwitterSearchImpl(TwitterSearch):
         self.max_tweets = max_tweets
         self.counter = 0
 
-    def save_tweets(self, tweets):
+    def save_tweets(self, tweets, write_f):
         """
-        Just prints out tweets
+        Save tweets to CSV file
         :return:
         """
+
+        print "Writing tweets..."
+
         for tweet in tweets:
             # Lets add a counter so we only collect a max number of tweets
             self.counter += 1
@@ -190,15 +242,31 @@ class TwitterSearchImpl(TwitterSearch):
             if tweet['created_at'] is not None:
                 t = datetime.datetime.fromtimestamp((tweet['created_at']/1000))
                 fmt = "%Y-%m-%d %H:%M:%S"
-                print "%i [%s] - %s" % (self.counter, t.strftime(fmt), tweet['text'])
+                if tweet['location'] is not None:
+                    loc = tweet['location'].replace('"', '""')
+                else:
+                    loc = ""
 
+                write_f.write(('\n"%s","%s","%s","%s","%d","%d","%s","%s","%s","%s","%s"' % (tweet['user_id'], tweet['user_name'].replace('"', '""'), tweet['user_screen_name'].replace('"', '""'), t.strftime(fmt), tweet['retweets'], tweet['favorites'], tweet['text'].replace('"', '""'), loc, tweet['tweet_id'], tweet['permalink'], tweet['language'])))
+            
             # When we've reached our max limit, return False so collection stops
             if self.counter >= self.max_tweets:
                 return False
 
         return True
 
+    def save_max_position(self, max_position, write_f):
+        """
+        Save URLs with max_position to CSV file
+        :return:
+        """
+        write_f.write(max_position)
+        write_f.write('\n')
+        return True
+
 
 if __name__ == '__main__':
-    twit = TwitterSearchImpl(0, 5, 5000)
-    twit.search("Babylon 5")
+    reload(sys)  
+    sys.setdefaultencoding('utf8')
+    twit = TwitterSearchImpl(0, 5, 20)
+    twit.search("brexit since:2016-06-17 until:2016-06-18", "TWEET-743956284588826628-743529795045232641")
