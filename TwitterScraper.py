@@ -22,8 +22,6 @@ import sys
 
 
 # Let user define search to scrape
-print '[Searches that yield no results will throw error messages]'
-print ''
 search_for = raw_input("Enter search term: ")
 print ''
 start_date = raw_input("Start date [yyyy-mm-dd]: ")
