@@ -4,7 +4,7 @@ This Python script will extract tweets, and data about them, by web scraping pag
 ## Running TwitterScraper
 
 - Download TwitterScraper.py and open Terminal in its directory
-- ```$ python materialiser.py```
+- ```$ python TwitterScraper.py```
 - Follow the on-screen instructions
 
 ## Required Libraries
