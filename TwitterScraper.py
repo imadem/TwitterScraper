@@ -1,3 +1,13 @@
+print ''
+print ''
+print '=========================================================='
+print ''
+print 'T W I T T E R  S C R A P E R'
+print ''
+print '=========================================================='
+print ''
+
+# Import libraries
 import urllib2
 import json
 import datetime
@@ -10,9 +20,18 @@ from time import sleep
 import codecs
 import sys
 
-__author__ = 'Tom Dickinson'
+
+# Let user define search to scrape
+print '[Searches that yield no results will throw error messages]'
+print ''
+search_for = raw_input("Enter search term: ")
+print ''
+start_date = raw_input("Start date [yyyy-mm-dd]: ")
+end_date = raw_input("End date [yyyy-mm-dd]: ")
 
 
+
+# Do the actual search, retrieval, and writing
 class TwitterSearch:
 
     __metaclass__ = ABCMeta
@@ -233,7 +252,7 @@ class TwitterSearchImpl(TwitterSearch):
         :return:
         """
 
-        print "Writing tweets..."
+        print "Writing to 'tweets.csv'... [wait until done, or ctrl+C to interrupt]"
 
         for tweet in tweets:
             # Lets add a counter so we only collect a max number of tweets
@@ -247,11 +266,12 @@ class TwitterSearchImpl(TwitterSearch):
                 else:
                     loc = ""
 
-                write_f.write(('\n"%s","%s","%s","%s","%d","%d","%s","%s","%s","%s","%s"' % (tweet['user_id'], tweet['user_name'].replace('"', '""'), tweet['user_screen_name'].replace('"', '""'), t.strftime(fmt), tweet['retweets'], tweet['favorites'], tweet['text'].replace('"', '""'), loc, tweet['tweet_id'], tweet['permalink'], tweet['language'])))
+                write_f.write(('\n"%s","%s","%s","%s","%d","%d","%s","%s","%s","%s","%s"' % (tweet['user_id'], tweet['user_name'].replace('"', '""'), tweet['user_screen_name'].replace('"', '""'), t.strftime(fmt), tweet['retweets'], tweet['favorites'], tweet['text'].replace('"', '""').replace('\n',' '), loc, tweet['tweet_id'], tweet['permalink'], tweet['language'])))
             
+            # KILL THE MAX TWEETS SECTION TO GET AS MUCH AS POSSIBLE!
             # When we've reached our max limit, return False so collection stops
-            if self.counter >= self.max_tweets:
-                return False
+            #if self.counter >= self.max_tweets:
+            #    return False
 
         return True
 
@@ -269,4 +289,6 @@ if __name__ == '__main__':
     reload(sys)  
     sys.setdefaultencoding('utf8')
     twit = TwitterSearchImpl(0, 5, 20)
-    twit.search("brexit since:2016-06-17 until:2016-06-18", "TWEET-743956284588826628-743529795045232641")
+    #twit.search("brexit since:2015-02-17 until:2016-06-18", "TWEET-743956284588826628-743529795045232641")
+    twit.search(str(search_for) + " since:" + str(start_date) + " until:" + str(end_date), "TWEET-743956284588826628-743529795045232641")
+
