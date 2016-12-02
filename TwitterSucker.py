@@ -1,10 +1,10 @@
+print '================================'
+print '=        TwitterSucker         ='
+print '================================'
 print ''
-print ''
-print '=========================================================='
-print ''
-print 'T W I T T E R  S C R A P E R'
-print ''
-print '=========================================================='
+print 'You will query the advanced search at twitter.com'
+print 'and get a dataset consisting of all tweets available'
+print 'for each date within your set timeframe.'
 print ''
 
 # Import libraries
@@ -19,20 +19,28 @@ from bs4 import BeautifulSoup
 from time import sleep
 import codecs
 import sys
+from datetime import datetime
+from datetime import timedelta
 
 
-# Let user define search to scrape
-search_for = raw_input("Enter search term: ")
-print ''
-start_date = raw_input("Start date [yyyy-mm-dd]: ")
-end_date = raw_input("End date [yyyy-mm-dd]: ")
+#==========================================================
+# DEFINE CLASSES
 
-
-
-# Do the actual search, retrieval, and writing
+# Do the actual search, retrieval, and writing of the slice data
+# This code is an edited version of https://github.com/hv8/Twitter-Search-API-Python
 class TwitterSearch:
-
     __metaclass__ = ABCMeta
+
+    # Empty the output file and write a header line to it
+    write_f = open('tweets.csv', 'w')
+    write_f.write('date, user, name, retweets, favorites, text')
+    write_f.close
+
+
+
+
+    # Open the file ready for appending stuff to it
+    write_f = open('tweets.csv', 'a')
 
     def __init__(self, rate_delay, error_delay=5):
         """
@@ -53,9 +61,8 @@ class TwitterSearch:
         min_tweet = None
         response = self.execute_search(url)
 
-        write_f = codecs.open('tweets.csv', 'wb+')
-        urls_f = codecs.open('urls.txt', 'wb+')
-        write_f.write('user id, name, user name, date, retweets, favorites, text, location, id, permalink, language')
+        write_f = open('tweets.csv', 'a')  # open the file with a for appending
+        urls_f = open('urls.txt', 'wb+')
 
         while response is not None and continue_search and response['items_html'] is not None:
             tweets = self.parse_tweets(response['items_html'])
@@ -95,34 +102,36 @@ class TwitterSearch:
                 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.86 Safari/537.36'
             }
             req = urllib2.Request(url, headers=headers)
-            print "Response received"
+            # print "connecting ; ",
             response = urllib2.urlopen(req)
             data = json.loads(response.read())
-            print "Data loaded"
+            # print "reading ; ",
             return data
-
-        # If we get a ValueError exception due to a request timing out, we sleep for our error delay, then make
-        # another attempt
+            # If we get a ValueError exception due to a request timing out, we sleep for our error delay, then make
+            # another attempt
         except ValueError as e:
-            print e.message
+            print
+            e.message
             self.handle_error(url)
 
-        #Handle other errors similarly
+        # Handle other errors similarly
         except urllib2.HTTPError, e:
-            print 'HTTPError: ' + str(e.code)
+            print
+            'HTTPError: ' + str(e.code)
             self.handle_error(url)
 
         except urllib2.URLError, e:
-            print 'URLError: ' + str(e.reason)
+            print
+            'URLError: ' + str(e.reason)
             self.handle_error(url)
 
         except Exception:
             import traceback
             print 'Generic Exception: ' + traceback.format_exc()
-            self.handle_error(url)   
+            self.handle_error(url)
 
     def handle_error(self, url):
-        print "Sleeping for %i seconds" % self.error_delay
+        print 'Sleeping for %i seconds' % self.error_delay
         sleep(self.error_delay)
         return self.execute_search(url)
 
@@ -144,15 +153,10 @@ class TwitterSearch:
             tweet = {
                 'tweet_id': li['data-item-id'],
                 'text': "",
-                'user_id': None,
                 'user_screen_name': "",
                 'user_name': "",
-                'created_at': None,
                 'retweets': 0,
                 'favorites': 0,
-                'location': None,
-                'language': None,
-                'permalink': None
             }
 
             # Tweet Text
@@ -163,15 +167,8 @@ class TwitterSearch:
             # Tweet User ID, User Screen Name, User Name, Permalink
             user_details_div = li.find("div", class_="tweet")
             if user_details_div is not None:
-                tweet['user_id'] = user_details_div['data-user-id']
                 tweet['user_screen_name'] = user_details_div['data-screen-name']
                 tweet['user_name'] = user_details_div['data-name']
-                tweet['permalink'] = 'https://twitter.com' + user_details_div['data-permalink-path']
-
-            # Tweet date
-            date_span = li.find("span", class_="_timestamp")
-            if date_span is not None:
-                tweet['created_at'] = float(date_span['data-time-ms'])
 
             # Tweet Retweets
             retweet_span = li.select("span.ProfileTweet-action--retweet > span.ProfileTweet-actionCount")
@@ -182,16 +179,6 @@ class TwitterSearch:
             favorite_span = li.select("span.ProfileTweet-action--favorite > span.ProfileTweet-actionCount")
             if favorite_span is not None and len(retweet_span) > 0:
                 tweet['favorites'] = int(favorite_span[0]['data-tweet-stat-count'])
-
-            #Location
-            location_span = li.find("span", class_='Tweet-geo')
-            if location_span is not None:
-                tweet['location'] = location_span['title']
-
-            #Language
-            lang_p = li.find("p", class_='tweet-text')
-            if lang_p is not None:
-                tweet['language'] = lang_p['lang']
 
             tweets.append(tweet)
         return tweets
@@ -225,14 +212,16 @@ class TwitterSearch:
         An abstract method that's called with a list of tweets.
         When implementing this class, you can do whatever you want with these tweets.
         """
+
     @abstractmethod
     def save_max_position(self, max_position, write_f):
         """
-        An abstract method to log search URLs with max_position, in order to resume search. 
+        An abstract method to log search URLs with max_position, in order to resume search.
         """
 
 
 class TwitterSearchImpl(TwitterSearch):
+
 
     def __init__(self, rate_delay, error_delay, max_tweets):
         """
@@ -241,7 +230,9 @@ class TwitterSearchImpl(TwitterSearch):
         :param max_tweets: Maximum number of tweets to collect for this example
         """
         super(TwitterSearchImpl, self).__init__(rate_delay, error_delay)
-        self.max_tweets = max_tweets
+
+        # THIS SETS THE MAXIMUM NUMBER OF TWEETS TO COLLECT (PER ROUND)
+        #self.max_tweets = maximum
         self.counter = 0
 
     def save_tweets(self, tweets, write_f):
@@ -250,24 +241,18 @@ class TwitterSearchImpl(TwitterSearch):
         :return:
         """
 
-        print "Writing to 'tweets.csv'... [wait until done, or ctrl+C to interrupt]"
 
         for tweet in tweets:
-            # Lets add a counter so we only collect a max number of tweets
-            self.counter += 1
+                write_f.write(('\n%s;%s;%s;%s;%s,;%s' % (
+                str(datetime.date(dt_obj_start)), tweet['user_screen_name'], tweet['user_name'].replace('"', '""'),
+                tweet['retweets'], tweet['favorites'],
+                tweet['text'].replace('"', '""').replace('\n', ' ').replace('\r', ' ').replace('  ', ' ')
+            )))
 
-            if tweet['created_at'] is not None:
-                t = datetime.datetime.fromtimestamp((tweet['created_at']/1000))
-                fmt = "%Y-%m-%d %H:%M:%S"
-                if tweet['location'] is not None:
-                    loc = tweet['location'].replace('"', '""')
-                else:
-                    loc = ""
 
-                write_f.write(('\n"%s","%s","%s","%s","%d","%d","%s","%s","%s","%s","%s"' % (tweet['user_id'], tweet['user_name'].replace('"', '""'), tweet['user_screen_name'].replace('"', '""'), t.strftime(fmt), tweet['retweets'], tweet['favorites'], tweet['text'].replace('"', '""').replace('\n',' '), loc, tweet['tweet_id'], tweet['permalink'], tweet['language'])))
-                
-            
-            # KILL THE MAX TWEETS SECTION TO GET AS MUCH AS POSSIBLE!
+
+
+
             # When we've reached our max limit, return False so collection stops
             #if self.counter >= self.max_tweets:
             #    return False
@@ -283,11 +268,39 @@ class TwitterSearchImpl(TwitterSearch):
         write_f.write('\n')
         return True
 
+# ==========================================================
+# RUN THE PROGRAM
 
-if __name__ == '__main__':
-    reload(sys)  
-    sys.setdefaultencoding('utf8')
-    twit = TwitterSearchImpl(0, 5, 20)
-    #twit.search("brexit since:2015-02-17 until:2016-06-18", "TWEET-743956284588826628-743529795045232641")
-    twit.search(str(search_for) + " since:" + str(start_date) + " until:" + str(end_date), "TWEET-743956284588826628-743529795045232641")
+# Let user define search term
+search_for = raw_input("Search term: ")
 
+# Have the user input start and stop dates and convert them to datetime format
+start_date = raw_input("Start date [yyyy-mm-dd]: ")
+stop_date = raw_input("End date [yyyy-mm-dd]: ")
+dt_str_start = start_date
+dt_str_stop = stop_date
+dt_obj_start = datetime.strptime(dt_str_start, '%Y-%m-%d')
+dt_obj_stop = datetime.strptime(dt_str_stop, '%Y-%m-%d')
+
+# Let the user set the slice size
+# maximum = int(raw_input("Slice size (number of tweets): "))
+
+# Make sure that the search loop is running (one date slice at a time)
+# for as long as the (increasing) dtr_obj_start is before the (fixed) dtr_obj_stop
+while dt_obj_start <= dt_obj_stop: # As long as the stop date has not been reached
+    dt_obj_slice = dt_obj_start + timedelta(days=1) # Add 1 day to the start date to get the end of the 1-day slice
+    print 'Sucking ' + str(datetime.date(dt_obj_start))
+
+        #print 'This technically means a search from ' + str(datetime.date(dt_obj_start)) + ' to ' + str(datetime.date(dt_obj_slice))
+
+    if __name__ == '__main__':
+        reload(sys)
+        sys.setdefaultencoding('utf8')
+        twit = TwitterSearchImpl(0, 5, 20)
+        twit.search(str(search_for) + " since:" + str(datetime.date(dt_obj_start)) + " until:" + str(datetime.date(dt_obj_slice)),
+                    "TWEET-743956284588826628-743529795045232641")
+
+    # After getting the slice, increase start date by 1 to move on
+    dt_obj_start = dt_obj_start + timedelta(days=1)
+
+print 'Sucking complete, now go analyse your data!'

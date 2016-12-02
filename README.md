@@ -6,5 +6,14 @@ Running TwitterScraper:
 - ```$ python TwitterScraper.py```
 - Follow the on-screen instructions
 
+## TwitterSucker
+Running ```$ python TwitterSucker.py``` will do the same thing as TwitterScraper, but will divide the search procedure into date-by-date queries.
+
+## TwitterSlicer
+Running ```$ python TwitterSlicer.py``` will divide the search procedure into date-by-date queries and return a dataset consisting of slices (a set number
+of tweets per day in your search interval).
+
+
 Required Libraries:
-* BeautifulSoup 4
+* bs4
+* lxml
