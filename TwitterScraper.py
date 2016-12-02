@@ -1,5 +1,3 @@
-print ''
-print ''
 print '=========================================================='
 print ''
 print 'T W I T T E R  S C R A P E R'
